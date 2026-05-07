@@ -1,0 +1,25 @@
+{
+  "name": "yt-slides-app",
+  "version": "0.1.0",
+  "description": "Electron app that turns a YouTube video into a PowerPoint highlight deck (GIFs + screenshots + speaker notes). Pick moments via Gemini in an embedded webview, or via Claude Code in non-interactive print mode.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT",
+  "keywords": [
+    "electron",
+    "youtube",
+    "powerpoint",
+    "pptx",
+    "gemini",
+    "claude",
+    "video",
+    "highlights",
+    "ffmpeg",
+    "yt-dlp"
+  ],
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

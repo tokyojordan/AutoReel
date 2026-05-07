@@ -1,0 +1,54 @@
+# Node / Electron
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.python-version
+
+# Build / packaging artifacts
+dist/
+build/
+out/
+release/
+*.tgz
+*.zip
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project working files (never commit user data, video caches, or
+# generated decks — these live in ~/.yt-slides-app/, but ignore here
+# too in case anyone runs experiments inside the repo)
+*.mp4
+*.gif
+*.png
+*.pptx
+*.vtt
+*.srt
+moments.json
+media/
+.yt-slides-app/
+
+# Secrets (none expected, but defensive)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

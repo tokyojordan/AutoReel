@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>YouTube → Slides</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: -apple-system, system-ui, sans-serif; }
+  body { display: flex; background: #1E2761; color: #fff; }
+
+  /* ---- Left: Gemini ---- */
+  #left {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    border-right: 2px solid #0d1340;
+  }
+  #left-header {
+    padding: 8px 12px;
+    background: #0d1340;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+  }
+  #left-header button {
+    background: #1E2761; color: #fff; border: 1px solid #3a4488;
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  }
+  #left-header button:hover { background: #2a3478; }
+  #gemini-frame { flex: 1; border: 0; background: #fff; }
+
+  /* ---- Right: Workflow ---- */
+  #right {
+    width: 50%;
+    background: #f7f8fc;
+    color: #21295C;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #right header {
+    padding: 16px 20px;
+    background: #1E2761; color: #fff;
+  }
+  #right header h1 { font-family: Georgia, serif; font-size: 20px; }
+  #right header p { font-size: 12px; color: #CADCFC; margin-top: 2px; }
+
+  #workflow { flex: 1; overflow-y: auto; padding: 20px; }
+  .step {
+    background: #fff;
+    border: 1px solid #d8ddec;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .step h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #6b7299; margin-bottom: 10px;
+  }
+  .step h2 .num {
+    display: inline-block; width: 22px; height: 22px;
+    background: #1E2761; color: #fff; border-radius: 50%;
+    text-align: center; line-height: 22px; margin-right: 8px;
+    font-size: 12px;
+  }
+
+  input[type=text], textarea {
+    width: 100%; padding: 8px; border: 1px solid #c5cce0;
+    border-radius: 4px; font-family: inherit; font-size: 13px;
+  }
+  textarea { min-height: 120px; font-family: ui-monospace, monospace; font-size: 12px; }
+
+  button.primary {
+    background: #1E2761; color: #fff; border: 0;
+    padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;
+    margin-top: 8px;
+  }
+  button.primary:hover { background: #2a3478; }
+  button.primary:disabled { background: #9ca3c0; cursor: not-allowed; }
+
+  .moment {
+    border: 1px solid #e0e4f0; border-radius: 6px;
+    padding: 10px; margin-bottom: 8px; font-size: 12px;
+  }
+  .moment .ts { color: #6b7299; font-family: monospace; }
+  .moment .title { font-weight: bold; margin: 2px 0; }
+
+  #log {
+    background: #0d1340; color: #CADCFC;
+    font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 10px; border-radius: 4px;
+    max-height: 180px; overflow-y: auto;
+    white-space: pre-wrap;
+  }
+
+  /* Media carousel: one card per moment, paginated when too many */
+  #media-preview { margin-top: 8px; }
+  .moment-card {
+    background: #fff; border: 1px solid #e0e4f0; border-radius: 6px;
+    padding: 8px 10px; margin-bottom: 8px;
+  }
+  .moment-card-title {
+    font-size: 12px; font-weight: 600; color: #21295C; margin-bottom: 6px;
+  }
+  .moment-card-title .num {
+    color: #6b7299; font-weight: 500; margin-right: 4px;
+  }
+  .moment-card-media {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .moment-card-media .label {
+    font-size: 10px; color: #6b7299; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 2px;
+  }
+  .moment-card-media img {
+    width: 100%; border-radius: 3px; display: block;
+    background: #0d1340;
+  }
+  .moment-card-media .missing {
+    aspect-ratio: 16/9; background: #f0f1f7; border: 1px dashed #c5cce0;
+    border-radius: 3px; display: flex; align-items: center;
+    justify-content: center; color: #9ca3c0; font-size: 11px;
+    font-style: italic;
+  }
+
+  #media-nav {
+    display: none; align-items: center; justify-content: center;
+    gap: 12px; margin-top: 4px;
+  }
+  #media-nav button {
+    background: #1E2761; color: #fff; border: 0;
+    padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  }
+  #media-nav button:hover:not(:disabled) { background: #2a3478; }
+  #media-nav button:disabled { background: #c5cce0; cursor: not-allowed; }
+  #media-page-label {
+    font-size: 12px; color: #6b7299; min-width: 60px; text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hint {
+    background: #fff8e1; border-left: 3px solid #f59e0b;
+    padding: 8px 10px; font-size: 11px; color: #6b4f00;
+    margin-bottom: 10px; border-radius: 0 4px 4px 0;
+  }
+
+  /* Settings card with custom-styled range sliders */
+  .settings-card {
+    background: linear-gradient(135deg, #f0f3fb 0%, #fafbff 100%);
+    border: 1px solid #d8ddec; border-radius: 8px;
+    padding: 12px 14px; margin: 10px 0;
+  }
+  .setting-row {
+    display: grid; grid-template-columns: 90px 1fr 50px;
+    align-items: center; gap: 12px;
+  }
+  .setting-row + .setting-row { margin-top: 10px; }
+  .setting-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #6b7299; font-weight: 600;
+  }
+  .setting-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; background: #d8ddec;
+    border-radius: 2px; cursor: pointer; outline: none;
+    transition: background 0.15s;
+  }
+  .setting-slider:hover { background: #c5cce0; }
+  .setting-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #1E2761; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(30, 39, 97, 0.35);
+    cursor: pointer; transition: transform 0.15s;
+  }
+  .setting-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .setting-slider::-webkit-slider-thumb:active { transform: scale(1.05); }
+  .setting-slider::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #1E2761; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(30, 39, 97, 0.35);
+    cursor: pointer;
+  }
+  .setting-value {
+    background: #1E2761; color: #fff;
+    padding: 3px 0; border-radius: 12px;
+    font-size: 11px; font-weight: 600;
+    text-align: center; min-width: 44px;
+    font-variant-numeric: tabular-nums;
+  }
+  #env-banner {
+    background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d;
+    padding: 10px 12px; border-radius: 6px; font-size: 12px;
+    margin-bottom: 14px;
+  }
+  #env-banner code {
+    background: #fff; padding: 1px 4px; border-radius: 2px;
+    font-family: ui-monospace, monospace;
+  }
+  #env-banner.ok {
+    background: #dcfce7; border-color: #86efac; color: #14532d;
+  }
+
+  /* Moments editing table */
+  #moments-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  #moments-table th {
+    text-align: left; padding: 6px 4px; border-bottom: 2px solid #d8ddec;
+    font-size: 11px; text-transform: uppercase; color: #6b7299;
+    font-weight: 600;
+  }
+  #moments-table td {
+    padding: 4px 2px; border-bottom: 1px solid #eef0f7; vertical-align: top;
+  }
+  #moments-table input, #moments-table textarea {
+    width: 100%; padding: 4px 6px; border: 1px solid transparent;
+    background: transparent; font-family: inherit; font-size: 12px;
+    border-radius: 3px; color: #21295C;
+  }
+  #moments-table input:hover, #moments-table textarea:hover {
+    border-color: #d8ddec;
+  }
+  #moments-table input:focus, #moments-table textarea:focus {
+    outline: none; border-color: #1E2761; background: #fff;
+  }
+
+  /* Segmented S/M/E toggle for screenshot frame */
+  .frame-toggle {
+    display: flex; width: 100%;
+    border: 1px solid #c5cce0; border-radius: 4px; overflow: hidden;
+    background: #f7f8fc;
+  }
+  .frame-toggle button {
+    flex: 1; padding: 4px 0; border: 0; background: transparent;
+    font-family: inherit; font-size: 11px; font-weight: 600;
+    color: #6b7299; cursor: pointer;
+    border-right: 1px solid #c5cce0;
+    transition: background 0.1s, color 0.1s;
+  }
+  .frame-toggle button:last-child { border-right: 0; }
+  .frame-toggle button:hover { background: #eef0f7; color: #21295C; }
+  .frame-toggle[data-value="start"]  button[data-frame="start"],
+  .frame-toggle[data-value="middle"] button[data-frame="middle"],
+  .frame-toggle[data-value="end"]    button[data-frame="end"] {
+    background: #1E2761; color: #fff;
+  }
+  #moments-table input.invalid {
+    border-color: #dc2626; background: #fef2f2;
+  }
+  #moments-table textarea { min-height: 32px; resize: none; overflow-y: hidden; }
+  #moments-table .ts-input { font-family: ui-monospace, monospace; }
+  #moments-table .delete-btn {
+    background: transparent; border: 0; color: #9ca3c0;
+    cursor: pointer; font-size: 16px; padding: 4px 6px;
+  }
+  #moments-table .delete-btn:hover { color: #dc2626; }
+  #moments-table tbody:empty::after {
+    content: "No moments yet — click 'Add row' or import JSON above.";
+    display: block; padding: 12px; color: #9ca3c0; font-style: italic;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div id="left">
+  <div id="left-header">
+    <button id="back">←</button>
+    <button id="forward">→</button>
+    <button id="reload">⟳</button>
+    <span style="color:#7884c2">gemini.google.com</span>
+  </div>
+  <webview id="gemini-frame" src="https://gemini.google.com/app"
+           partition="persist:gemini" allowpopups></webview>
+</div>
+
+<div id="right">
+  <header>
+    <h1>YouTube → Slides</h1>
+    <p>Use Gemini on the left to find moments, then automate the rest here.</p>
+  </header>
+
+  <div id="workflow">
+
+    <div id="env-banner" style="display:none;"></div>
+
+    <div class="step">
+      <h2><span class="num">1</span>YouTube URL & Prompt</h2>
+      <input id="url" type="text" placeholder="https://www.youtube.com/watch?v=...">
+
+      <div class="settings-card">
+        <div class="setting-row">
+          <span class="setting-label">Moments</span>
+          <input type="range" class="setting-slider" id="set-n" min="3" max="30" value="6">
+          <span class="setting-value" id="set-n-val">6</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">GIF min</span>
+          <input type="range" class="setting-slider" id="set-min" min="1" max="60" value="3">
+          <span class="setting-value" id="set-min-val">3s</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">GIF max</span>
+          <input type="range" class="setting-slider" id="set-max" min="1" max="60" value="30">
+          <span class="setting-value" id="set-max-val">30s</span>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="primary" id="copy-prompt">Copy prompt for Gemini</button>
+        <button class="primary" id="auto-pick" style="background:#3a4488;">Auto-pick with Claude</button>
+      </div>
+      <div class="hint" style="margin-top:10px;">
+        <strong>Gemini:</strong> watches the video — better for visual content.
+        Paste the copied prompt on the left.<br>
+        <strong>Claude:</strong> reads auto-captions via <code>claude -p</code> — fully automated, better for talking-head/podcast content.
+      </div>
+    </div>
+
+    <div class="step">
+      <h2><span class="num">2</span>Moments</h2>
+      <p style="font-size:12px; color:#6b7299; margin-bottom:8px;">
+        Paste Gemini's JSON to bulk-fill, or click "Add row" to enter moments manually.
+        All fields are editable.
+      </p>
+      <details style="margin-bottom:10px;">
+        <summary style="cursor:pointer; font-size:12px; color:#1E2761;">
+          Import / Export JSON
+        </summary>
+        <textarea id="moments-json" style="margin-top:8px;" placeholder='[{"start":"01:23","end":"01:28","title":"...","description":"..."}]'></textarea>
+        <div style="display:flex; gap:8px; margin-top:4px;">
+          <button class="primary" id="parse" style="font-size:12px; padding:6px 12px;">Import JSON</button>
+          <button class="primary" id="copy-json" style="font-size:12px; padding:6px 12px; background:#3a4488;">Copy JSON</button>
+        </div>
+      </details>
+
+      <table id="moments-table">
+        <thead>
+          <tr>
+            <th style="width:70px;">Start</th>
+            <th style="width:70px;">End</th>
+            <th style="width:80px;" title="Which frame to grab for the screenshot">Frame</th>
+            <th>Title</th>
+            <th>Description</th>
+            <th style="width:30px;"></th>
+          </tr>
+        </thead>
+        <tbody id="moments-rows"></tbody>
+      </table>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button class="primary" id="add-row" style="background:#3a4488;">+ Add row</button>
+        <span id="moments-count" style="font-size:12px; color:#6b7299; align-self:center;"></span>
+      </div>
+    </div>
+
+    <div class="step">
+      <h2><span class="num">3</span>Download video &amp; cut media</h2>
+      <button class="primary" id="extract" disabled>Extract GIFs &amp; screenshots</button>
+      <div id="media-preview"></div>
+      <div id="media-nav">
+        <button id="media-prev" type="button">‹ Prev</button>
+        <span id="media-page-label">1 / 1</span>
+        <button id="media-next" type="button">Next ›</button>
+      </div>
+    </div>
+
+    <div class="step">
+      <h2><span class="num">4</span>Build presentation</h2>
+      <input id="title" type="text" placeholder="Deck title" value="Video Highlights">
+      <button class="primary" id="build" disabled>Build .pptx</button>
+    </div>
+
+    <div class="step">
+      <h2>Activity log</h2>
+      <div id="log"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // When we have metadata, name the video explicitly and force Gemini to
+  // acknowledge it before producing moments — this dramatically reduces
+  // the rate at which it invents moments from unrelated videos.
+  const PROMPT_WITH_META = (url, title, channel, n, minDur, maxDur) => `Watch this specific YouTube video:
+  Title: "${title}"
+  Channel: ${channel}
+  URL: ${url}
+
+Identify the ${n} most notable moments from THIS video. For each, return:
+  - start: timestamp (MM:SS or HH:MM:SS)
+  - end:   timestamp ${minDur}-${maxDur} seconds after start
+  - title: 4-8 word slide title
+  - description: 1-2 sentence caption shown on the slide
+  - notes: 3-5 talking-point bullets the presenter would use, one bullet per line prefixed with "- " (this is hidden speaker-only text, distinct from description)
+
+Return ONLY a JSON array (no markdown fences, no prose):
+[{"start":"01:23","end":"01:28","title":"Key reveal","description":"…","notes":"- Set up why this matters\\n- Reference the earlier setup\\n- Pause after the reveal"}]
+
+If you cannot access this exact video, say so — do not invent moments from a similarly named video.`;
+
+  const PROMPT_FALLBACK = (url, n, minDur, maxDur) => `Watch this YouTube video: ${url}
+
+Identify the ${n} most notable moments. For each, return:
+  - start: timestamp (MM:SS or HH:MM:SS)
+  - end:   timestamp ${minDur}-${maxDur} seconds after start
+  - title: 4-8 word slide title
+  - description: 1-2 sentence caption shown on the slide
+  - notes: 3-5 talking-point bullets for the presenter, one bullet per line prefixed with "- "
+
+Return ONLY a JSON array, no markdown fences:
+[{"start":"01:23","end":"01:28","title":"Key reveal","description":"…","notes":"- Set up why this matters\\n- Pause after the reveal"}]`;
+
+  const $ = (id) => document.getElementById(id);
+  const log = (msg) => {
+    const el = $('log');
+    el.textContent += msg + '\n';
+    el.scrollTop = el.scrollHeight;
+  };
+
+  // Environment check on startup — surface missing tools clearly.
+  (async () => {
+    const env = await window.api.checkEnv();
+    const banner = $('env-banner');
+    const missing = [];
+    if (!env.python) missing.push('Python (install from python.org, tick "Add to PATH")');
+    if (!env.ytDlp) missing.push('yt-dlp (<code>pip install yt-dlp</code>)');
+    if (!env.ffmpeg) {
+      const tip = env.platform === 'win32'
+        ? '<code>winget install Gyan.FFmpeg</code> then restart this app'
+        : '<code>brew install ffmpeg</code> or <code>apt install ffmpeg</code>';
+      missing.push('ffmpeg (' + tip + ')');
+    }
+    if (missing.length) {
+      banner.innerHTML = '<strong>Setup needed:</strong><br>• ' + missing.join('<br>• ');
+      banner.style.display = 'block';
+    } else {
+      banner.classList.add('ok');
+      banner.textContent = '✓ Python, yt-dlp, and ffmpeg detected.';
+      banner.style.display = 'block';
+      setTimeout(() => banner.style.display = 'none', 3000);
+    }
+  })();
+
+  // Settings sliders — moments count + GIF duration range.
+  // Live-update the value badges; enforce min ≤ max by nudging the other side.
+  function readSettings() {
+    return {
+      n: parseInt($('set-n').value, 10),
+      minDur: parseInt($('set-min').value, 10),
+      maxDur: parseInt($('set-max').value, 10),
+    };
+  }
+  function bindSlider(sliderId, badgeId, suffix) {
+    const slider = $(sliderId);
+    const badge = $(badgeId);
+    slider.addEventListener('input', () => {
+      badge.textContent = slider.value + suffix;
+      const min = parseInt($('set-min').value, 10);
+      const max = parseInt($('set-max').value, 10);
+      if (sliderId === 'set-min' && min > max) {
+        $('set-max').value = slider.value;
+        $('set-max-val').textContent = slider.value + 's';
+      } else if (sliderId === 'set-max' && max < min) {
+        $('set-min').value = slider.value;
+        $('set-min-val').textContent = slider.value + 's';
+      }
+    });
+  }
+  bindSlider('set-n', 'set-n-val', '');
+  bindSlider('set-min', 'set-min-val', 's');
+  bindSlider('set-max', 'set-max-val', 's');
+
+  // Webview navigation
+  const wv = $('gemini-frame');
+  $('back').onclick = () => wv.canGoBack() && wv.goBack();
+  $('forward').onclick = () => wv.canGoForward() && wv.goForward();
+  $('reload').onclick = () => wv.reload();
+
+  // Step 1: copy prompt
+  $('copy-prompt').onclick = async () => {
+    const url = $('url').value.trim();
+    if (!url) { alert('Enter a YouTube URL first'); return; }
+    const btn = $('copy-prompt');
+    const origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Fetching video info…';
+    const { n, minDur, maxDur } = readSettings();
+    let prompt;
+    try {
+      const meta = await window.api.fetchVideoMetadata(url);
+      if (meta && meta.title && meta.channel) {
+        prompt = PROMPT_WITH_META(url, meta.title, meta.channel, n, minDur, maxDur);
+        log(`✓ Anchored prompt to "${meta.title}" — ${meta.channel}.`);
+      } else {
+        prompt = PROMPT_FALLBACK(url, n, minDur, maxDur);
+        log('⚠ Could not fetch video title (private/unlisted?). Copied URL-only prompt.');
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origLabel;
+    }
+    await navigator.clipboard.writeText(prompt);
+    log('✓ Prompt copied. Paste it into Gemini on the left.');
+  };
+
+  // Stream log lines from analyze.py while it runs.
+  window.api.onAnalyzeProgress((ev) => {
+    if (ev.type === 'log') log(ev.message);
+  });
+
+  $('auto-pick').onclick = async () => {
+    const url = $('url').value.trim();
+    if (!url) { alert('Enter a YouTube URL first'); return; }
+    const btn = $('auto-pick');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Analyzing…';
+    log('→ Auto-picking moments via transcript + claude -p…');
+    try {
+      const meta = await window.api.fetchVideoMetadata(url);
+      const { n, minDur, maxDur } = readSettings();
+      const moments = await window.api.autoPickMoments({
+        url, n, minDur, maxDur,
+        title: meta?.title || '',
+        channel: meta?.channel || '',
+      });
+      if (!Array.isArray(moments) || moments.length === 0) {
+        log('✗ Claude did not return a usable moments array.');
+        return;
+      }
+      $('moments-rows').innerHTML = '';
+      moments.forEach(m => addRow(m));
+      log(`✓ Auto-picked ${moments.length} moments. Edit any field to adjust.`);
+    } catch (e) {
+      log('✗ ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = orig;
+    }
+  };
+
+  // Step 2: editable moments table
+  // Single source of truth — read from the DOM when needed.
+
+  const TS_PATTERN = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+
+  function isValidTs(s) { return TS_PATTERN.test(s.trim()); }
+
+  function tsToSeconds(s) {
+    const parts = s.trim().split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return NaN;
+  }
+
+  // Auto-insert colons as the user types digits, so "123" becomes "1:23".
+  // Keeps the field looking right mid-typing without padding short input.
+  function formatTsLive(raw) {
+    const d = raw.replace(/\D/g, '').slice(0, 6);
+    if (d.length <= 2) return d;
+    if (d.length === 3) return d[0] + ':' + d.slice(1);
+    if (d.length === 4) return d.slice(0, 2) + ':' + d.slice(2);
+    if (d.length === 5) return d[0] + ':' + d.slice(1, 3) + ':' + d.slice(3);
+    return d.slice(0, 2) + ':' + d.slice(2, 4) + ':' + d.slice(4);
+  }
+
+  // On blur, pad bare 1-2 digit input to a valid "0:SS" form.
+  function formatTsBlur(raw) {
+    const d = raw.replace(/\D/g, '');
+    if (d.length === 0) return '';
+    if (d.length <= 2) return '0:' + d.padStart(2, '0');
+    return formatTsLive(d);
+  }
+
+  function addRow(data = {}) {
+    const tbody = $('moments-rows');
+    const tr = document.createElement('tr');
+    const frame = ['start', 'middle', 'end'].includes(data.frame) ? data.frame : 'middle';
+    // Speaker notes ride along on the row's dataset — not in the visible
+    // table to avoid clutter, but preserved through the JSON round-trip
+    // and written into the deck as speaker notes by build.py.
+    tr.dataset.notes = data.notes || '';
+    tr.innerHTML = `
+      <td><input class="ts-input" data-field="start"
+                 placeholder="0:00" value="${data.start || ''}"></td>
+      <td><input class="ts-input" data-field="end"
+                 placeholder="0:05" value="${data.end || ''}"></td>
+      <td><div class="frame-toggle" data-field="frame" data-value="${frame}"
+               title="Which frame to use for the screenshot">
+            <button type="button" data-frame="start" title="Start of clip">S</button>
+            <button type="button" data-frame="middle" title="Middle of clip">M</button>
+            <button type="button" data-frame="end" title="End of clip">E</button>
+          </div></td>
+      <td><input data-field="title"
+                 placeholder="Slide title" value="${(data.title || '').replace(/"/g, '&quot;')}"></td>
+      <td><textarea data-field="description"
+                    placeholder="What happens here">${data.description || ''}</textarea></td>
+      <td><button class="delete-btn" title="Delete row">×</button></td>
+    `;
+    tbody.appendChild(tr);
+
+    tr.querySelector('.delete-btn').onclick = () => { tr.remove(); updateState(); };
+
+    // Timestamp formatters run BEFORE updateState so validation sees the
+    // reformatted value and the field never flashes "invalid" mid-typing.
+    tr.querySelectorAll('.ts-input').forEach(el => {
+      el.addEventListener('input', (e) => {
+        const formatted = formatTsLive(e.target.value);
+        if (formatted !== e.target.value) e.target.value = formatted;
+      });
+      el.addEventListener('blur', (e) => {
+        const formatted = formatTsBlur(e.target.value);
+        if (formatted !== e.target.value) {
+          e.target.value = formatted;
+          updateState();
+        }
+      });
+    });
+
+    tr.querySelectorAll('input, textarea').forEach(el => {
+      el.addEventListener('input', updateState);
+    });
+
+    // Auto-grow the description textarea to fit its content. Runs on
+    // creation (so imported / auto-picked rows show all text immediately)
+    // and on every input. +2px accounts for border with box-sizing: border-box.
+    const desc = tr.querySelector('[data-field="description"]');
+    const autosizeDesc = () => {
+      desc.style.height = 'auto';
+      desc.style.height = (desc.scrollHeight + 2) + 'px';
+    };
+    desc.addEventListener('input', autosizeDesc);
+    autosizeDesc();
+
+    // Frame toggle: store the selection on the wrapper's data-value so CSS
+    // attribute selectors highlight the active button.
+    const toggle = tr.querySelector('.frame-toggle');
+    toggle.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        toggle.dataset.value = btn.dataset.frame;
+        updateState();
+      });
+    });
+
+    updateState();
+  }
+
+  function readMoments() {
+    return Array.from($('moments-rows').querySelectorAll('tr')).map(tr => {
+      const get = (f) => tr.querySelector(`[data-field="${f}"]`).value.trim();
+      const frame = tr.querySelector('[data-field="frame"]').dataset.value || 'middle';
+      return { start: get('start'), end: get('end'),
+               frame,
+               title: get('title'), description: get('description'),
+               notes: tr.dataset.notes || '' };
+    });
+  }
+
+  function validateMoments(moments) {
+    const errors = [];
+    moments.forEach((m, i) => {
+      if (!isValidTs(m.start)) errors.push(`Row ${i+1}: bad start time`);
+      if (!isValidTs(m.end)) errors.push(`Row ${i+1}: bad end time`);
+      if (isValidTs(m.start) && isValidTs(m.end) &&
+          tsToSeconds(m.end) <= tsToSeconds(m.start)) {
+        errors.push(`Row ${i+1}: end must be after start`);
+      }
+      if (!m.title) errors.push(`Row ${i+1}: title is empty`);
+    });
+    return errors;
+  }
+
+  function updateState() {
+    const moments = readMoments();
+    const errors = validateMoments(moments);
+
+    // Mark invalid timestamp inputs
+    $('moments-rows').querySelectorAll('tr').forEach((tr, i) => {
+      const m = moments[i];
+      tr.querySelector('[data-field="start"]').classList.toggle('invalid', !isValidTs(m.start) && m.start !== '');
+      tr.querySelector('[data-field="end"]').classList.toggle('invalid', !isValidTs(m.end) && m.end !== '');
+    });
+
+    const count = moments.length;
+    const valid = count > 0 && errors.length === 0;
+    $('moments-count').textContent = valid
+      ? `${count} moment${count !== 1 ? 's' : ''} ready`
+      : (count === 0 ? '' : `${errors.length} issue${errors.length !== 1 ? 's' : ''}: ${errors[0]}`);
+    $('moments-count').style.color = valid ? '#14532d' : '#dc2626';
+
+    $('extract').disabled = !valid;
+
+    // Keep the JSON view in sync with the table so it always reflects
+    // current edits and is ready to copy. Skip while the textarea is
+    // focused so the user can paste into it without being clobbered.
+    const ta = $('moments-json');
+    if (document.activeElement !== ta) {
+      ta.value = JSON.stringify(moments, null, 2);
+    }
+  }
+
+  $('add-row').onclick = () => addRow();
+
+  $('copy-json').onclick = async () => {
+    const moments = readMoments();
+    const json = JSON.stringify(moments, null, 2);
+    await navigator.clipboard.writeText(json);
+    log(`✓ Copied ${moments.length} moment${moments.length !== 1 ? 's' : ''} as JSON.`);
+  };
+
+  // Bulk import from JSON
+  $('parse').onclick = () => {
+    const raw = $('moments-json').value.trim()
+      .replace(/^```(?:json)?\s*|\s*```$/g, '');
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('Expected an array');
+      $('moments-rows').innerHTML = '';
+      parsed.forEach(m => addRow(m));
+      log(`✓ Imported ${parsed.length} moments. Edit any field to adjust.`);
+    } catch (e) {
+      alert('JSON parse error: ' + e.message);
+    }
+  };
+
+  // Start with one empty row so the user sees what's expected
+  addRow();
+
+  // Step 3: extract media
+  window.api.onExtractProgress((ev) => {
+    if (ev.type === 'log') log(ev.message);
+    else if (ev.type === 'progress') log(`  [${ev.current}/${ev.total}] ${ev.label}`);
+  });
+
+  // Media carousel state — paginated view of all extracted moment media.
+  let mediaState = { items: [], page: 0, pageSize: 3 };
+
+  function esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Group "moment_NN.{gif,png}" files by moment number and pair with titles
+  // from the moments list (1-based).
+  function pairMediaWithMoments(files, moments) {
+    const byNum = new Map();
+    for (const f of files) {
+      const match = f.match(/moment_(\d+)\.(gif|png)/i);
+      if (!match) continue;
+      const num = parseInt(match[1], 10);
+      if (!byNum.has(num)) byNum.set(num, { num, gif: null, png: null, title: '' });
+      byNum.get(num)[match[2].toLowerCase()] = f;
+    }
+    for (const [num, entry] of byNum) {
+      entry.title = moments[num - 1]?.title || `Moment ${num}`;
+    }
+    return Array.from(byNum.values()).sort((a, b) => a.num - b.num);
+  }
+
+  function renderMediaPage() {
+    const { items, page, pageSize } = mediaState;
+    const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+    const slice = items.slice(page * pageSize, page * pageSize + pageSize);
+
+    $('media-preview').innerHTML = slice.map(m => `
+      <div class="moment-card">
+        <div class="moment-card-title">
+          <span class="num">#${String(m.num).padStart(2, '0')}</span>${esc(m.title)}
+        </div>
+        <div class="moment-card-media">
+          <div>
+            <div class="label">GIF</div>
+            ${m.gif ? `<img src="file:///${m.gif}" alt="GIF">` : '<div class="missing">no gif</div>'}
+          </div>
+          <div>
+            <div class="label">Frame</div>
+            ${m.png ? `<img src="file:///${m.png}" alt="frame">` : '<div class="missing">no frame</div>'}
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    const showNav = items.length > pageSize;
+    $('media-nav').style.display = showNav ? 'flex' : 'none';
+    $('media-page-label').textContent = `${page + 1} / ${totalPages}`;
+    $('media-prev').disabled = page === 0;
+    $('media-next').disabled = page >= totalPages - 1;
+  }
+
+  $('media-prev').onclick = () => {
+    if (mediaState.page > 0) { mediaState.page--; renderMediaPage(); }
+  };
+  $('media-next').onclick = () => {
+    const totalPages = Math.ceil(mediaState.items.length / mediaState.pageSize);
+    if (mediaState.page < totalPages - 1) { mediaState.page++; renderMediaPage(); }
+  };
+
+  $('extract').onclick = async () => {
+    const url = $('url').value.trim();
+    if (!url) { alert('Enter a YouTube URL in step 1'); return; }
+    const moments = readMoments();
+    await window.api.saveMoments(moments);
+    $('extract').disabled = true;
+    log('→ Downloading video and cutting media…');
+    try {
+      await window.api.extractMedia(url);
+      log('✓ Media ready.');
+      const files = await window.api.listMedia();
+      mediaState = {
+        items: pairMediaWithMoments(files, moments),
+        page: 0,
+        pageSize: 3,
+      };
+      renderMediaPage();
+      $('build').disabled = false;
+    } catch (e) {
+      log('✗ ' + e.message);
+      $('extract').disabled = false;
+    }
+  };
+
+  // Step 4: build deck
+  window.api.onBuildProgress((ev) => {
+    if (ev.type === 'log') log(ev.message);
+  });
+
+  $('build').onclick = async () => {
+    const title = $('title').value.trim() || 'Video Highlights';
+    const url = $('url').value.trim();
+    $('build').disabled = true;
+    log('→ Building deck…');
+    try {
+      const saved = await window.api.buildDeck({ title, youtubeUrl: url });
+      if (saved) {
+        log(`✓ Saved: ${saved}`);
+        await window.api.revealFile(saved);
+      } else {
+        log('Save cancelled.');
+      }
+    } catch (e) {
+      log('✗ ' + e.message);
+    } finally {
+      $('build').disabled = false;
+    }
+  };
+</script>
+</body>
+</html>
