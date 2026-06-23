@@ -480,9 +480,20 @@ Return ONLY a JSON array, no markdown fences:
   $('reload').onclick = () => wv.reload();
 
   // Step 1: copy prompt
+  // Wipe moments + extracted media so the previous video's data never
+  // bleeds into a new run. Invoked by either step-1 button.
+  function clearVideoData() {
+    $('moments-rows').innerHTML = '';
+    updateState();              // resets count + JSON view, disables Extract
+    mediaState = { items: [], page: 0, pageSize: 3 };
+    renderMediaPage();          // empties media preview, hides nav
+    $('build').disabled = true; // no media yet → nothing to build
+  }
+
   $('copy-prompt').onclick = async () => {
     const url = $('url').value.trim();
     if (!url) { alert('Enter a YouTube URL first'); return; }
+    clearVideoData();
     const btn = $('copy-prompt');
     const origLabel = btn.textContent;
     btn.disabled = true;
@@ -514,6 +525,7 @@ Return ONLY a JSON array, no markdown fences:
   $('auto-pick').onclick = async () => {
     const url = $('url').value.trim();
     if (!url) { alert('Enter a YouTube URL first'); return; }
+    clearVideoData();
     const btn = $('auto-pick');
     const orig = btn.textContent;
     btn.disabled = true;
@@ -531,7 +543,6 @@ Return ONLY a JSON array, no markdown fences:
         log('✗ Claude did not return a usable moments array.');
         return;
       }
-      $('moments-rows').innerHTML = '';
       moments.forEach(m => addRow(m));
       log(`✓ Auto-picked ${moments.length} moments. Edit any field to adjust.`);
     } catch (e) {

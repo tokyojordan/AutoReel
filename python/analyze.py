@@ -1,7 +1,9 @@
-"""analyze.py — fetch YouTube auto-captions, ask Claude to pick moments.
+"""analyze.py — fetch YouTube captions, ask Claude to pick moments.
 
 Pipeline:
-  1. yt-dlp --write-auto-subs to grab the English VTT
+  1. yt-dlp probes available caption tracks, then grabs the best VTT —
+     preferring English (incl. YouTube's auto-translated English), and
+     falling back to the original-language track if no English exists
   2. Parse cues; dedupe rolling-caption growth
   3. Build a prompt anchored on title/channel + transcript
   4. Pipe to `claude -p` via stdin, capture stdout
@@ -28,23 +30,77 @@ def emit(event):
     print(json.dumps(event), flush=True)
 
 
+def probe_caption_langs(url):
+    """Return (subtitles, automatic_captions) dicts keyed by language code.
+
+    automatic_captions includes YouTube's auto-translated tracks, so an
+    English ASR transcript is usually available for non-English videos too.
+    Returns empty dicts if the probe fails (caller falls back to a direct
+    English attempt).
+    """
+    cmd = [YTDLP, "-J", "--skip-download", "--no-warnings", url]
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    if res.returncode != 0:
+        return {}, {}
+    try:
+        info = json.loads(res.stdout)
+    except (ValueError, TypeError):
+        return {}, {}
+    return info.get("subtitles") or {}, info.get("automatic_captions") or {}
+
+
+def pick_lang(subs, autos):
+    """Choose the best caption language code, preferring English.
+
+    Order: manual English → manual any-English variant → auto English
+    (incl. auto-translated) → any manual track → any auto track.
+    Returns None if no captions exist at all.
+    """
+    def first_en(d):
+        if "en" in d:
+            return "en"
+        return next((c for c in d if c.split("-")[0] == "en"), None)
+
+    return (
+        first_en(subs)
+        or first_en(autos)
+        or (next(iter(subs)) if subs else None)
+        or (next(iter(autos)) if autos else None)
+    )
+
+
 def fetch_subs(url, workdir):
+    subs, autos = probe_caption_langs(url)
+    lang = pick_lang(subs, autos)
+    if lang is None and (subs or autos):
+        # Probe succeeded but the video genuinely has no captions.
+        raise RuntimeError("This video has no captions in any language.")
+    # If the probe failed (empty dicts), fall back to a direct English attempt.
+    lang = lang or "en"
+
+    is_english = lang.split("-")[0] == "en"
+    if not is_english:
+        emit({"type": "log", "message":
+              f"No English captions; using '{lang}' transcript instead."})
+
     out_template = str(workdir / "transcript.%(ext)s")
     cmd = [
         YTDLP,
-        "--write-auto-subs", "--skip-download",
-        "--sub-format", "vtt", "--sub-lang", "en",
+        # Request both manual and auto tracks; yt-dlp grabs whichever exists
+        # for the chosen language.
+        "--write-subs", "--write-auto-subs", "--skip-download",
+        "--sub-format", "vtt", "--sub-lang", lang,
         "-o", out_template,
         url,
     ]
-    emit({"type": "log", "message": "Fetching transcript via yt-dlp…"})
+    emit({"type": "log", "message": f"Fetching transcript via yt-dlp (lang={lang})…"})
     res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     if res.returncode != 0:
         emit({"type": "log", "message": "yt-dlp: " + (res.stderr or "").strip()})
         raise RuntimeError("yt-dlp failed")
     candidates = sorted(workdir.glob("transcript*.vtt"))
     if not candidates:
-        raise RuntimeError("No transcript produced — video may not have English captions.")
+        raise RuntimeError("No transcript produced — video may have no captions.")
     return candidates[0]
 
 
