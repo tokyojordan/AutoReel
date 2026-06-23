@@ -157,9 +157,17 @@ ipcMain.handle('build-deck', async (_evt, { title, youtubeUrl }) => {
     'build-progress'
   );
 
+  // Default the save name to the deck title from step 4, sanitized to a
+  // safe filename. Falls back to 'highlights' if the title is empty.
+  const baseName = (title || '')
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')  // strip path-illegal chars
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120) || 'highlights';
+
   // Ask user where to save the final file
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: 'highlights.pptx',
+    defaultPath: `${baseName}.pptx`,
     filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
   });
   if (filePath) {
